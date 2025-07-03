@@ -4,7 +4,12 @@ import AllCampaigns from "./components/AllCampaigns";
 import MyCampaigns from "./components/MyCampaigns";
 import CampaignDetails from "./components/CampaignDetails";
 import CreateCampaignModal from "./components/CreateCampaignModal";
-import { ConnectButton, useActiveAccount, useReadContract, useSendTransaction } from "thirdweb/react";
+import {
+  ConnectButton,
+  useActiveAccount,
+  useReadContract,
+  useSendTransaction,
+} from "thirdweb/react";
 import { client } from "./client";
 import { getContract, prepareContractCall, toEther, toWei } from "thirdweb";
 import { baseSepolia, sepolia } from "thirdweb/chains";
@@ -16,14 +21,14 @@ export interface Campaign {
   owner: string;
   name: string;
   description: string;
-  goal: string; // Stored as string to handle BigNumber from ethers.js
-  duration: number;
-  creationTime: number;
+  goal: bigint; // Stored as string to handle BigNumber from ethers.js
+  duration: bigint;
+  creationTime: bigint;
 }
 
 export interface Tier {
   name: string;
-  amount: string; // Stored as string to handle BigNumber from ethers.js
+  amount: bigint; // Stored as string to handle BigNumber from ethers.js
   backers: number;
 }
 
@@ -31,13 +36,11 @@ export type CampaignState = 0 | 1 | 2; // 0=Active, 1=Successful, 2=Failed
 
 // --- Helper Components ---
 
-interface MessageBoxProps {
+const MessageBox: React.FC<{
   message: string | null;
   type: "error" | "success" | "";
   onClose: () => void;
-}
-
-const MessageBox: React.FC<MessageBoxProps> = ({ message, type, onClose }) => {
+}> = ({ message, type, onClose }) => {
   if (!message) return null;
   const bgColor = type === "error" ? "bg-red-500" : "bg-green-500";
   return (
@@ -52,13 +55,9 @@ const MessageBox: React.FC<MessageBoxProps> = ({ message, type, onClose }) => {
   );
 };
 
-export interface LoadingSpinnerProps {
+export const LoadingSpinner: React.FC<{
   message?: string;
-}
-
-export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
-  message = "Loading...",
-}) => (
+}> = ({ message = "Loading..." }) => (
   <div className="flex items-center justify-center p-4">
     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400"></div>
     <p className="ml-3 text-gray-700">{message}</p>
@@ -117,35 +116,19 @@ export const parseEthToWei = (ethAmount: string): string => {
   }
 };
 
-// --- CreateCampaignModal Component ---
-/* interface CreateCampaignModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onCreateCampaign: (campaignData: {
-    name: string;
-    description: string;
-    goal: string;
-    duration: string;
-  }) => Promise<void>;
-  loading: boolean;
-  isFactoryPaused: boolean;
-  showMessage: (msg: string, type?: "success" | "error") => void;
-} */
-
-  export const contract = getContract({
+export const contract = getContract({
   address: CONTRACT_ADDRESS,
   client,
   chain: sepolia,
-})
+});
 
 // --- Main App Component ---
 
 function App() {
-
   const account = useActiveAccount();
-    
+
   const { mutate: sendTransaction } = useSendTransaction();
-    
+
   /* const {data: test__, isPending} = useReadContract({
     contract,
     method:
@@ -153,19 +136,15 @@ function App() {
     params: [],
   }) */
 
-  /* const [currentAccount, setCurrentAccount] = useState<string | null>(
-    "0xUserWalletAddress..."
-  ); */ // Mock connected account
-  // const [userId, setUserId] = useState<string | null>("user-id-mock"); // Mock user ID
-
   const [view, setView] = useState<
     "allCampaigns" | "myCampaigns" | "campaignDetails"
-  >("allCampaigns"); // Removed 'createCampaign' as a direct view
+  >("allCampaigns");
   const [selectedCampaignAddress, setSelectedCampaignAddress] = useState<
     string | null
   >(null);
   const [showCreateCampaignModal, setShowCreateCampaignModal] =
-    useState<boolean>(false); // New state for modal
+    useState<boolean>(false);
+  const [allCampaigns, setAllCampaigns] = useState<Campaign[]>([]);
 
   const [message, setMessage] = useState<string>("");
   const [messageType, setMessageType] = useState<"error" | "success" | "">("");
@@ -177,17 +156,6 @@ function App() {
     setTimeout(() => setMessage(""), 5000);
   };
 
-  /* const connectWallet = useCallback(() => {
-    setLoading(true);
-    showMessage("Simulating wallet connection...", "success");
-    setTimeout(() => {
-      // setCurrentAccount("0xUserWalletAddressMockedForUI");
-      setUserId("mock-user-id-123");
-      showMessage("Wallet connected (UI only)!");
-      setLoading(false);
-    }, 1500);
-  }, []); */
-
   // --- Main App Render ---
   return (
     <div className="font-inter antialiased bg-gray-900 text-gray-100 min-h-screen flex flex-col">
@@ -198,79 +166,58 @@ function App() {
       />
 
       <header className="bg-gray-800 shadow-sm p-4 flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-blue-400">
-          CrowdFund DApp
-        </h1>
+        <h1 className="text-2xl font-bold text-blue-400">CrowdFund DApp</h1>
         <nav>
           {account && (
-              <>
-                <button
-                  onClick={() => {
-                    setView("allCampaigns");
-                    setSelectedCampaignAddress(null);
-                  }}
-                  className={`px-4 py-2 rounded-md font-semibold transition duration-300 ${
-                    view === "allCampaigns"
-                      ? "bg-blue-600 text-white"
-                      : "text-blue-300 hover:bg-gray-700"
-                  }`}
-                >
-                  All Campaigns
-                </button>
-                <button
-                  onClick={() => {
-                    setView("myCampaigns");
-                    setSelectedCampaignAddress(null);
-                  }}
-                  className={`ml-4 px-4 py-2 rounded-md font-semibold transition duration-300 ${
-                    view === "myCampaigns"
-                      ? "bg-blue-600 text-white"
-                      : "text-blue-300 hover:bg-gray-700"
-                  }`}
-                >
-                  My Campaigns
-                </button>
-                <button
-                  onClick={() => {
-                    setShowCreateCampaignModal(true);
-                  }}
-                  className={`ml-4 px-4 py-2 rounded-md font-semibold transition duration-300 ${
-                    showCreateCampaignModal
-                      ? "bg-blue-600 text-white"
-                      : "text-blue-300 hover:bg-gray-700"
-                  }`}
-                >
-                  Create New
-                </button>
-              </>
+            <>
+              <button
+                onClick={() => {
+                  setView("allCampaigns");
+                  setSelectedCampaignAddress(null);
+                }}
+                className={`px-4 py-2 rounded-md font-semibold transition duration-300 ${
+                  view === "allCampaigns"
+                    ? "bg-blue-600 text-white"
+                    : "text-blue-300 hover:bg-gray-700"
+                }`}
+              >
+                All Campaigns
+              </button>
+              <button
+                onClick={() => {
+                  setView("myCampaigns");
+                  setSelectedCampaignAddress(null);
+                }}
+                className={`ml-4 px-4 py-2 rounded-md font-semibold transition duration-300 ${
+                  view === "myCampaigns"
+                    ? "bg-blue-600 text-white"
+                    : "text-blue-300 hover:bg-gray-700"
+                }`}
+              >
+                My Campaigns
+              </button>
+              <button
+                onClick={() => {
+                  setShowCreateCampaignModal(true);
+                }}
+                className={`ml-4 px-4 py-2 rounded-md font-semibold transition duration-300 ${
+                  showCreateCampaignModal
+                    ? "bg-blue-600 text-white"
+                    : "text-blue-300 hover:bg-gray-700"
+                }`}
+              >
+                Create New
+              </button>
+            </>
           )}
         </nav>
-        {account ? (
-          <div className="flex items-center space-x-2">
-            <span className="text-gray-200">
-              Connected: {account?.address/* .substring(0, 6) */}...
-              {account.address.substring(account.address.length - 4)}
-            </span>
-            {/* <span className="text-gray-400 text-sm">
-              User ID: {userId?.substring(0, 6)}...
-              {userId?.substring(userId.length - 4)}
-            </span> */}
-          </div>
-        ) : (
-          <ConnectButton
-            client={client}
-            detailsButton={{
-              className: "bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed",
-            }}
-          />
-          /* <button
-            onClick={connectWallet}
-            disabled={loading}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? "Connecting..." : "Connect Wallet"}
-          </button> */
-        )}
+        <ConnectButton
+          client={client}
+          detailsButton={{
+            className:
+              "bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed",
+          }}
+        />
       </header>
 
       <main className="flex-grow p-6 bg-gray-900">
@@ -284,10 +231,10 @@ function App() {
           <>
             {view === "allCampaigns" && (
               <AllCampaigns
+                allCampaigns={allCampaigns}
+                setAllCampaigns={setAllCampaigns}
                 currentAccount={account.address}
                 showMessage={showMessage}
-                loading={loading}
-                setLoading={setLoading}
                 setView={setView}
                 setSelectedCampaignAddress={setSelectedCampaignAddress}
                 campaignListType={"all"}
@@ -295,10 +242,10 @@ function App() {
             )}
             {view === "myCampaigns" && (
               <MyCampaigns
+                allCampaigns={allCampaigns}
+                setAllCampaigns={setAllCampaigns}
                 currentAccount={account.address}
                 showMessage={showMessage}
-                loading={loading}
-                setLoading={setLoading}
                 setView={setView}
                 setSelectedCampaignAddress={setSelectedCampaignAddress}
                 campaignListType={"my"}
@@ -307,7 +254,6 @@ function App() {
             {view === "campaignDetails" && selectedCampaignAddress && (
               <CampaignDetails
                 campaignAddress={selectedCampaignAddress}
-                currentAccount={account.address}
                 showMessage={showMessage}
                 loading={loading}
                 setLoading={setLoading}
@@ -325,14 +271,19 @@ function App() {
                   contract,
                   method:
                     "function createCampaign(string _name, string _description, uint256 _goal, uint256 _duration)",
-                  params: [campaignData.name, campaignData.description, toWei(campaignData.goal), BigInt(campaignData.duration)],
+                  params: [
+                    campaignData.name,
+                    campaignData.description,
+                    toWei(campaignData.goal),
+                    BigInt(campaignData.duration),
+                  ],
                 });
 
                 return await new Promise((resolve, reject) => {
-
                   sendTransaction(transaction, {
                     onSuccess: () => {
                       showMessage("Campaign created!");
+                      // setAllCampaigns(prev => prev.push(transaction))
                       setLoading(false);
                       resolve();
                     },
@@ -343,29 +294,7 @@ function App() {
                       reject("Failed to create campaign: " + error.message);
                     },
                   });
-
-                })
-
-                /* return new Promise<void>((resolve) => {
-                  setTimeout(() => {
-                    const newCampaignAddress = `0xMockCampaign${Math.random()
-                      .toString(36)
-                      .substring(2, 15)}Address`;
-                    const newCampaignMock: Campaign = {
-                      campaignAddress: newCampaignAddress,
-                      owner: account.address!,
-                      name: campaignData.name,
-                      description: campaignData.description,
-                      goal: parseEthToWei(campaignData.goal),
-                      duration: parseInt(campaignData.duration),
-                      creationTime: Math.floor(Date.now() / 1000),
-                    };
-                    console.log("Mock Campaign Created:", newCampaignMock);
-                    showMessage("Campaign created (UI only)!");
-                    setLoading(false);
-                    resolve();
-                  }, 2000);
-                }); */
+                });
               }}
               loading={loading}
               isFactoryPaused={false}
@@ -378,4 +307,4 @@ function App() {
   );
 }
 
-export {App};
+export { App };

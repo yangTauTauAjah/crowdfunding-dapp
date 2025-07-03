@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Campaign, CampaignState, formatWeiToEth, LoadingSpinner, parseEthToWei, Tier } from "../App";
 import { useActiveAccount, useSendTransaction } from "thirdweb/react";
-import { getContract, prepareContractCall, readContract, toWei } from "thirdweb";
+import { getContract, prepareContractCall, readContract, toEther, toWei } from "thirdweb";
 import { client } from "../client";
 import { sepolia } from "thirdweb/chains";
 
@@ -13,7 +13,6 @@ const CampaignStateMap: { [key in CampaignState]: string } = {
 
 interface CampaignDetailsComponentProps {
   campaignAddress: string;
-  currentAccount: string | null;
   showMessage: (msg: string, type?: "success" | "error") => void;
   loading: boolean; // Prop to control loading state
   setLoading: (isLoading: boolean) => void;
@@ -37,35 +36,17 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
     chain: sepolia,
   })
 
-  /* const [campaignDetails, setCampaignDetails] = useState<
-    Omit<Campaign, "creationTime" | "duration"> & {
-      deadline: number;
-      balance: string;
-      state: CampaignState;
-    }
-  >({
-    name: "Save the Local Park",
-    description:
-      "Help us raise funds to renovate and maintain our beloved community park. Lorem ipsum, dolor sit amet consectetur adipisicing elit. Omnis dolore autem architecto pariatur accusamus, commodi obcaecati, consequatur exercitationem voluptatem, ipsa officiis inventore nostrum quia incidunt dicta ut adipisci quam sit?",
-    goal: "10000000000000000000", // 10 ETH
-    deadline: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // 30 days from now
-    // paused: false,
-    owner: "0xOwner1Address", // Mock owner
-    state: 0, // 0=Active, 1=Successful, 2=Failed (mocked for UI)
-    balance: "2000000000000000000", // 2 ETH
-    campaignAddress: campaignAddress, // Ensure campaignAddress is included in the state
-  }); */
   const [tiers, setTiers] = useState<Tier[]>([]);
   
   const [name, setName] = useState<string>("");
   const [description, setDescription] = useState<string>("")
-  const [goal, setGoal] = useState<string>("100");
-  const [deadline, setDeadline] = useState<number>(0);
+  const [goal, setGoal] = useState<bigint>(BigInt(100));
+  const [deadline, setDeadline] = useState<bigint>(BigInt(0));
   const [campaignOwner, setCampaignOwner] = useState<string>("");
   const [campaignState, setCampaignState] = useState<CampaignState>(0);
-  const [currentBalance, setCurrentBalance] = useState<string>("0");
+  const [currentBalance, setCurrentBalance] = useState<bigint>(BigInt(0));
   const [isCampaignPaused, setIsCampaignPaused] = useState<boolean>(false);
-  const [backerContribution, setBackerContribution] = useState<string>("");
+  const [backerContribution, setBackerContribution] = useState<bigint>(BigInt(0));
   const [isOwner, setIsOwner] = useState<boolean>(false);
   const [loadingDetails, setLoadingDetails] = useState<boolean>(false);
 
@@ -74,8 +55,8 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
     amount: "",
   });
 
-  const [tierToRemoveIndex, setTierToRemoveIndex] = useState<string>("");
-  // const [daysToExtend, setDaysToExtend] = useState<string>("");
+  const [tierToRemoveIndex, setTierToRemoveIndex] = useState<bigint | null>();
+  const [daysToExtend, setDaysToExtend] = useState<bigint | null>();
 
   useEffect(() => {
 
@@ -114,7 +95,7 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
           params: [],
         });
 
-        setDeadline(Number(deadline));
+        setDeadline(deadline);
 
         const balance = await readContract({
           contract: campaign,
@@ -122,7 +103,7 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
           params: [],
         });
 
-        setCurrentBalance(balance.toString());
+        setCurrentBalance(balance);
 
         const goal = await readContract({
           contract: campaign,
@@ -130,22 +111,16 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
           params: [],
         });
 
-        setGoal(goal.toString());
+        setGoal(goal);
       
         if (account) {
           setIsOwner(owner.toLowerCase() === account.address.toLowerCase());
         }
 
         const now = Math.floor(Date.now() / 1000);
-        let simulatedState: CampaignState = 0; // Active
-        if (
-          parseFloat(formatWeiToEth(balance.toString())) >=
-          parseFloat(formatWeiToEth(goal.toString()))
-        ) {
-          simulatedState = 1; // Successful
-        } else if (now >= deadline) {
-          simulatedState = 2; // Failed
-        }
+        let simulatedState: CampaignState = 0;
+        if ( balance >= goal ) simulatedState = 1;
+        else if (now >= deadline) simulatedState = 2;
         setCampaignState(simulatedState);
 
         const tiers = await readContract({
@@ -156,7 +131,7 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
 
         setTiers(tiers.map(e => ({
           name: e.name,
-          amount: e.amount.toString(),
+          amount: e.amount,
           backers: Number(e.backers)
         })));
 
@@ -169,7 +144,7 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
 
     })();
 
-  }, [/*  account, campaign  */]);
+  }, [ account, /* campaign */ ]);
 
   const handleFund = (tierIndex: number) => {
     setLoading(true);
@@ -179,7 +154,7 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
       contract: campaign,
       method: "function fund(uint256 _tierIndex) payable",
       params: [BigInt(tierIndex)],
-      value: toWei(tiers[tierIndex].amount),
+      value: tiers[tierIndex].amount,
     });
     
     sendTransaction(transaction, {
@@ -193,12 +168,12 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
       },
     });
 
-    setTimeout(() => {
-      const fundedAmount = parseFloat(formatWeiToEth(tiers[tierIndex].amount));
-      const newBalance = parseFloat(currentBalance) + fundedAmount;
-      setCurrentBalance(newBalance.toFixed(2));
+    /* setTimeout(() => {
+      const fundedAmount = (tiers[tierIndex].amount);
+      const newBalance = BigInt(currentBalance.toString()) + BigInt(fundedAmount.toString());
+      setCurrentBalance(newBalance);
       setBackerContribution((prev) =>
-        (parseFloat(prev) + fundedAmount).toFixed(2)
+        (prev + fundedAmount)
       );
       setTiers((prev) =>
         prev.map((tier, idx) =>
@@ -207,7 +182,7 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
       );
       showMessage("Successfully funded!");
       setLoading(false);
-    }, 1500);
+    }, 1500); */
   };
 
   const handleWithdraw = () => {
@@ -221,7 +196,7 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
     });
     sendTransaction(transaction, {
       onSuccess: () => {
-        setCurrentBalance("0");
+        setCurrentBalance(BigInt(0));
         showMessage("Funds withdrawn successfully!", "success");
         setLoading(false);
       },
@@ -249,7 +224,7 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
     });
     sendTransaction(transaction, {
       onSuccess: () => {
-        setBackerContribution("0");
+        setBackerContribution(BigInt(0));
         showMessage("Refund successful!", "success");
         setLoading(false);
       },
@@ -258,12 +233,6 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
         setLoading(false);
       },
     });
-
-    /* setTimeout(() => {
-      setBackerContribution("0");
-      showMessage("Refund successful (UI only)!");
-      setLoading(false);
-    }, 1500); */
   };
 
   const handleAddTier = (e: React.FormEvent<HTMLFormElement>) => {
@@ -281,7 +250,7 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
       onSuccess: () => {
         const newTierData: Tier = {
           name: newTier.name,
-          amount: newTier.amount,
+          amount: toWei(newTier.amount),
           backers: 0,
         };
         setTiers((prev) => [...prev, newTierData]);
@@ -294,22 +263,11 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
         setLoading(false);
       },
     });
-
-    /* setTimeout(() => {
-      const newTierData: Tier = {
-        name: newTier.name,
-        amount: parseEthToWei(newTier.amount),
-        backers: 0,
-      };
-      setTiers((prev) => [...prev, newTierData]);
-      setNewTier({ name: "", amount: "" });
-      showMessage("Tier added (UI only)!");
-      setLoading(false);
-    }, 1000); */
   };
 
   const handleRemoveTier = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!tierToRemoveIndex) return;
     setLoading(true);
 
     const transaction = prepareContractCall({
@@ -320,9 +278,9 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
 
     sendTransaction(transaction, {
       onSuccess: () => {
-        const index = parseInt(tierToRemoveIndex);
+        const index = Number(tierToRemoveIndex);
         setTiers((prev) => prev.filter((_, idx) => idx !== index));
-        setTierToRemoveIndex("");
+        setTierToRemoveIndex(BigInt(0));
         showMessage("Tier removed!");
         setLoading(false);
       },
@@ -333,24 +291,13 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
     });
 
     showMessage("Removing tier...", "success");
-    /* setTimeout(() => {
-      const index = parseInt(tierToRemoveIndex);
-      if (!isNaN(index) && index >= 0 && index < tiers.length) {
-        setTiers((prev) => prev.filter((_, idx) => idx !== index));
-        setTierToRemoveIndex("");
-        showMessage("Tier removed (UI only)!");
-      } else {
-        showMessage("Invalid tier index for removal (UI only).", "error");
-      }
-      setLoading(false);
-    }, 1000); */
   };
 
-  /* const handleExtendDeadline = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleExtendDeadline = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     showMessage("Simulating extending deadline...", "success");
-    setTimeout(() => {
+    /* setTimeout(() => {
       const days = parseInt(daysToExtend);
       if (!isNaN(days) && days > 0) {
         setCampaignDetails((prev) => ({
@@ -366,8 +313,8 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
         );
       }
       setLoading(false);
-    }, 1000);
-  }; */
+    }, 1000); */
+  };
 
   const handleTogglePause = () => {
 
@@ -403,8 +350,7 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
   const isCampaignFailed = campaignState === 2;
 
   const currentGoalProgress =
-    (parseFloat(currentBalance) /
-      parseFloat(formatWeiToEth(goal))) *
+    Number(currentBalance/goal) *
     100;
 
   return (
@@ -420,31 +366,45 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
         <h1 className="text-4xl font-extrabold text-blue-300 mb-4">
           {name}
         </h1>
-        <p className="text-gray-200 text-lg mb-4">
+        <p className="text-gray-200 text-lg mb-4 min-h-32">
           {description}
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-gray-200">
           <p>
             <span className="font-semibold">Contract Address:</span>{" "}
-            <span className="font-mono text-sm break-all text-gray-400">
+            <a
+              href={`https://sepolia.etherscan.io/address/${campaignAddress}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-sm break-all text-blue-400 underline hover:text-blue-300 transition-colors cursor-pointer"
+              title="View on Sepolia Etherscan"
+            >
               {campaignAddress}
-            </span>
+            </a>
           </p>
           <p>
             <span className="font-semibold">Owner:</span>{" "}
-            <span className="font-mono text-sm break-all text-gray-400">{campaignOwner}</span>
+            <a
+              href={`https://sepolia.etherscan.io/address/${campaignOwner}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-sm break-all text-blue-400 underline hover:text-blue-300 transition-colors cursor-pointer"
+              title="View on Sepolia Etherscan"
+            >
+              {campaignOwner}
+            </a>
           </p>
           <p>
             <span className="font-semibold">Goal:</span>{" "}
-            {formatWeiToEth(goal)} ETH
+            {toEther(goal)} ETH
           </p>
           <p>
             <span className="font-semibold">Current Balance:</span>{" "}
-            {currentBalance} ETH
+            {toEther(currentBalance)} ETH
           </p>
           <p>
             <span className="font-semibold">Deadline:</span>{" "}
-            {new Date(deadline * 1000).toLocaleString()}
+            {new Date(Number(deadline * BigInt(1000))).toLocaleString("en-US", {dateStyle: "medium"})}
           </p>
           <p>
             <span className="font-semibold">Status:</span>{" "}
@@ -500,7 +460,7 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
                   <div key={index} className="border border-blue-900 p-4 rounded-md bg-gray-900">
                     <h3 className="font-semibold text-blue-400">{tier.name}</h3>
                     <p className="text-gray-300">
-                      Amount: {formatWeiToEth(tier.amount)} ETH
+                      Amount: {toEther(tier.amount)} ETH
                     </p>
                     <p className="text-gray-300">
                       Backers: {tier.backers.toString()}
@@ -510,7 +470,7 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
                       disabled={loading}
                       className="mt-3 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Fund {formatWeiToEth(tier.amount)} ETH
+                      Fund {toEther(tier.amount)} ETH
                     </button>
                   </div>
                 ))}
@@ -518,15 +478,15 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
             )}
           </div>
         )}
-        {parseFloat(backerContribution) > 0 && (
+        {Number(backerContribution) > 0 && (
           <p className="mt-4 text-gray-300">
-            Your total contribution: {backerContribution} ETH
+            Your total contribution: {toEther(backerContribution)} ETH
           </p>
         )}
       </div>
 
       {/* Backer Actions */}
-      {parseFloat(backerContribution) > 0 && isCampaignFailed && (
+      {backerContribution > 0 && isCampaignFailed && (
         <div className="bg-gray-800 p-8 rounded-lg shadow-lg mb-8">
           <h2 className="text-2xl font-bold text-purple-200 mb-4">
             Your Actions as a Backer
@@ -536,7 +496,7 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
             disabled={loading}
             className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Request Refund ({backerContribution} ETH)
+            Request Refund ({toEther(backerContribution)} ETH)
           </button>
         </div>
       )}
@@ -550,12 +510,12 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Withdraw */}
-            <div className="p-4 border border-green-900 rounded-md bg-gray-900">
+            <div className="flex flex-col p-4 border border-green-900 rounded-md bg-gray-900">
               <h3 className="font-semibold text-green-400 mb-2">
                 Withdraw Funds
               </h3>
-              <p className="text-gray-300 mb-3">
-                Current Balance: {currentBalance} ETH
+              <p className="text-gray-300 mb-auto">
+                Current Balance: {toEther(currentBalance)} ETH
               </p>
               <button
                 onClick={handleWithdraw}
@@ -585,7 +545,7 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
                 <input
                   type="number"
                   placeholder="Amount (ETH)"
-                  value={newTier.amount}
+                  value={Number(newTier.amount)}
                   onChange={(e) =>
                     setNewTier({ ...newTier, amount: e.target.value })
                   }
@@ -611,8 +571,8 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
                 <input
                   type="number"
                   placeholder="Tier Index to Remove"
-                  value={tierToRemoveIndex}
-                  onChange={(e) => setTierToRemoveIndex(e.target.value)}
+                  value={Number(tierToRemoveIndex)}
+                  onChange={(e) => setTierToRemoveIndex(BigInt(e.target.value))}
                   className="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-800 text-gray-100 leading-tight focus:outline-none focus:shadow-outline"
                   min="0"
                   max={tiers.length > 0 ? tiers.length - 1 : 0}
@@ -628,7 +588,7 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
             </div>
 
             {/* Extend Deadline */}
-            {/* <div className="p-4 border border-yellow-900 rounded-md bg-gray-900">
+            <div className="p-4 border border-yellow-900 rounded-md bg-gray-900">
               <h3 className="font-semibold text-yellow-400 mb-2">
                 Extend Deadline
               </h3>
@@ -636,8 +596,8 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
                 <input
                   type="number"
                   placeholder="Days to Add"
-                  value={daysToExtend}
-                  onChange={(e) => setDaysToExtend(e.target.value)}
+                  value={Number(daysToExtend) || ""}
+                  onChange={(e) => setDaysToExtend(BigInt(e.target.value))}
                   className="shadow appearance-none border border-gray-700 rounded w-full py-2 px-3 bg-gray-800 text-gray-100 leading-tight focus:outline-none focus:shadow-outline"
                   min="1"
                   required
@@ -650,14 +610,14 @@ const CampaignDetailsComponent: React.FC<CampaignDetailsComponentProps> = ({
                   Extend Deadline
                 </button>
               </form>
-            </div> */}
+            </div>
 
             {/* Toggle Pause */}
-            <div className="p-4 border border-gray-700 rounded-md bg-gray-900">
+            <div className="flex flex-col p-4 border border-gray-700 rounded-md bg-gray-900">
               <h3 className="font-semibold text-gray-300 mb-2">
                 Toggle Campaign Pause
               </h3>
-              <p className="text-gray-300 mb-3">
+              <p className="text-gray-300 mb-auto">
                 Current Status: {isCampaignPaused ? "Paused" : "Active"}
               </p>
               <button

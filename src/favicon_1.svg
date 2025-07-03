@@ -1,0 +1,11 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="200" height="200" fill="transparent"/>
+
+  <!-- Stylized coin/donation element - larger and central -->
+  <circle cx="100" cy="100" r="100" fill="#FFD700"/>
+  <path d="M100 100 L125 75 L100 60 L75 75 Z" fill="#FFEB3B"/>
+  <text x="50" y="150" font-family="Arial, sans-serif" font-size="150" fill="#333333" font-weight="bold">€</text>
+
+  <!-- Upward arrow/growth indicator - emerging from the coin -->
+  <!-- <path d="M90 120 L110 120 L110 80 L120 80 L100 50 L80 80 L90 80 L90 120 Z" fill="#2196F3"/> -->
+</svg>
