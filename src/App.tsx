@@ -1,5 +1,5 @@
 // App.js
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState } from "react";
 import AllCampaigns from "./components/AllCampaigns";
 import MyCampaigns from "./components/MyCampaigns";
 import CampaignDetails from "./components/CampaignDetails";
@@ -7,12 +7,11 @@ import CreateCampaignModal from "./components/CreateCampaignModal";
 import {
   ConnectButton,
   useActiveAccount,
-  useReadContract,
   useSendTransaction,
 } from "thirdweb/react";
 import { client } from "./client";
-import { getContract, prepareContractCall, toEther, toWei } from "thirdweb";
-import { baseSepolia, sepolia } from "thirdweb/chains";
+import { getContract, prepareContractCall } from "thirdweb";
+import { sepolia } from "thirdweb/chains";
 import { CONTRACT_ADDRESS } from "./constants/contracts";
 
 // --- Type Definitions ---
@@ -21,14 +20,15 @@ export interface Campaign {
   owner: string;
   name: string;
   description: string;
-  goal: bigint; // Stored as string to handle BigNumber from ethers.js
+  goal: bigint;
   duration: bigint;
+  paused: boolean;
   creationTime: bigint;
 }
 
 export interface Tier {
   name: string;
-  amount: bigint; // Stored as string to handle BigNumber from ethers.js
+  amount: bigint;
   backers: number;
 }
 
@@ -64,58 +64,6 @@ export const LoadingSpinner: React.FC<{
   </div>
 );
 
-// --- Utility for formatting (pure JS, replaces ethers.js for UI-only) ---
-// Hardcode WEI_PER_ETHER to avoid BigInt exponentiation which might cause issues in some environments
-export const WEI_PER_ETHER = BigInt("1000000000000000000"); // 10^18
-
-export const formatWeiToEth = (weiAmount: string): string => {
-  if (!weiAmount) return "0";
-  try {
-    const bigIntWei = BigInt(weiAmount);
-    const integerPart = bigIntWei / WEI_PER_ETHER;
-    let fractionalPart = bigIntWei % WEI_PER_ETHER;
-
-    // Convert fractionalPart to string and pad with leading zeros to 18 digits
-    let fractionalString = fractionalPart.toString().padStart(18, "0");
-
-    // Trim trailing zeros, but keep at least one if it's '0'
-    fractionalString = fractionalString.replace(/0+$/, "");
-    if (fractionalString === "") fractionalString = "0";
-
-    // If the fractional part is all zeros, return only the integer part
-    if (fractionalString === "0") {
-      return integerPart.toString();
-    }
-
-    return `${integerPart}.${fractionalString}`;
-  } catch (e) {
-    console.error("Error formatting wei to eth:", e);
-    return "0";
-  }
-};
-
-export const parseEthToWei = (ethAmount: string): string => {
-  if (!ethAmount) return "0";
-  try {
-    const parts = ethAmount.split(".");
-    let integerPart = parts[0];
-    let fractionalPart = parts[1] || "";
-
-    // Pad or truncate fractional part to 18 digits
-    if (fractionalPart.length > 18) {
-      fractionalPart = fractionalPart.substring(0, 18);
-    } else {
-      fractionalPart = fractionalPart.padEnd(18, "0");
-    }
-
-    const combined = BigInt(integerPart + fractionalPart);
-    return combined.toString();
-  } catch (e) {
-    console.error("Error parsing eth to wei:", e);
-    return "0";
-  }
-};
-
 export const contract = getContract({
   address: CONTRACT_ADDRESS,
   client,
@@ -149,6 +97,7 @@ function App() {
   const [message, setMessage] = useState<string>("");
   const [messageType, setMessageType] = useState<"error" | "success" | "">("");
   const [loading, setLoading] = useState<boolean>(false);
+  const [displayNavbarCta, setDisplayNavbarCta] = useState(false);
 
   const showMessage = (msg: string, type: "success" | "error" = "success") => {
     setMessage(msg);
@@ -219,6 +168,90 @@ function App() {
           }}
         />
       </header>
+      {/* <nav className="bg-white border-gray-200 dark:bg-gray-900">
+        <div className="max-w-screen-xl flex flex-wrap items-center justify-between mx-auto p-4">
+          <h1 className="text-2xl font-bold text-blue-400">CrowdFund DApp</h1>
+
+          <div className="flex md:order-2 space-x-3 md:space-x-0 rtl:space-x-reverse">
+            <ConnectButton
+              client={client}
+              detailsButton={{
+                className:
+                  "bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed",
+              }}
+            />
+            <button
+              // dataCollapseToggle="navbar-cta"
+              type="button"
+              className="inline-flex items-center p-2 w-10 h-10 justify-center text-sm text-gray-500 rounded-lg md:hidden hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-200 dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-600"
+              // aria-controls="navbar-cta"
+              aria-expanded="false"
+              onClick={() => {
+                setDisplayNavbarCta(!displayNavbarCta);
+              }}
+            >
+              <span className="sr-only">Open main menu</span>
+              <svg
+                className="w-5 h-5"
+                aria-hidden="true"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 17 14"
+              >
+                <path
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M1 1h15M1 7h15M1 13h15"
+                />
+              </svg>
+            </button>
+          </div>
+          {displayNavbarCta && (
+            <div
+              className="items-center justify-between w-full md:flex md:w-auto md:order-1"
+              // id="navbar-cta"
+            >
+              <ul className="z-10 flex flex-col font-medium p-4 md:p-0 mt-4 border border-gray-100 rounded-lg bg-gray-50 md:space-x-8 rtl:space-x-reverse md:flex-row md:mt-0 md:border-0 md:bg-white dark:bg-gray-800 md:dark:bg-gray-900 dark:border-gray-700">
+                <li>
+                  <button
+                    className="w-full block py-2 px-3 md:p-0 text-white bg-blue-700 rounded-sm md:bg-transparent md:text-blue-700 md:dark:text-blue-500"
+                    aria-current="page"
+                    onClick={() => {
+                      setView("allCampaigns");
+                      setSelectedCampaignAddress(null);
+                    }}
+                  >
+                    All Campaigns
+                  </button>
+                </li>
+                <li>
+                  <button
+                    className="w-full block py-2 px-3 md:p-0 text-gray-900 rounded-sm hover:bg-gray-100 md:hover:bg-transparent md:hover:text-blue-700 md:dark:hover:text-blue-500 dark:text-white dark:hover:bg-gray-700 dark:hover:text-white md:dark:hover:bg-transparent dark:border-gray-700"
+                    onClick={() => {
+                      setView("myCampaigns");
+                      setSelectedCampaignAddress(null);
+                    }}
+                  >
+                    My Campaigns
+                  </button>
+                </li>
+                <li>
+                  <button
+                    className="w-full block py-2 px-3 md:p-0 text-gray-900 rounded-sm hover:bg-gray-100 md:hover:bg-transparent md:hover:text-blue-700 md:dark:hover:text-blue-500 dark:text-white dark:hover:bg-gray-700 dark:hover:text-white md:dark:hover:bg-transparent dark:border-gray-700"
+                    onClick={() => {
+                      setShowCreateCampaignModal(true);
+                    }}
+                  >
+                    Create Campaign
+                  </button>
+                </li>
+              </ul>
+            </div>
+          )}
+        </div>
+      </nav> */}
 
       <main className="flex-grow p-6 bg-gray-900">
         {!account ? (
@@ -274,7 +307,7 @@ function App() {
                   params: [
                     campaignData.name,
                     campaignData.description,
-                    toWei(campaignData.goal),
+                    BigInt(campaignData.goal),
                     BigInt(campaignData.duration),
                   ],
                 });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Campaign, contract, formatWeiToEth, LoadingSpinner } from "../App";
+import { Campaign, contract, LoadingSpinner } from "../App";
 import { useReadContract } from "thirdweb/react";
 import { getContract, readContract, toEther } from "thirdweb";
 import { client } from "../client";
@@ -7,8 +7,8 @@ import { sepolia } from "thirdweb/chains";
 
 // --- Campaign List Component (Handles both All and My Campaigns) ---
 export interface CampaignListComponentProps {
-  allCampaigns: Campaign[],
-  setAllCampaigns: (value: Campaign[]) => void,
+  allCampaigns: Campaign[];
+  setAllCampaigns: (value: Campaign[]) => void;
   currentAccount: string;
   showMessage: (msg: string, type?: "success" | "error") => void;
   setView: (view: "allCampaigns" | "myCampaigns" | "campaignDetails") => void;
@@ -25,7 +25,6 @@ const CampaignListComponent: React.FC<CampaignListComponentProps> = ({
   setSelectedCampaignAddress,
   campaignListType,
 }) => {
-
   const [userCampaigns, setUserCampaigns] = useState<Campaign[]>([]);
 
   const { data, isPending } = useReadContract({
@@ -60,22 +59,30 @@ const CampaignListComponent: React.FC<CampaignListComponentProps> = ({
           method: "function goal() view returns (uint256)",
           params: [],
         });
-        
+
         const deadline = await readContract({
           contract,
           method: "function deadline() view returns (uint256)",
           params: [],
         });
 
-        return {
+        const paused = await readContract({
+          contract,
+          method: "function paused() view returns (bool)"
+        });
+
+        const _: Campaign = {
           campaignAddress: e.campaignAddress,
           owner: e.owner,
           name: e.name,
           description,
           goal,
           duration: deadline,
+          paused,
           creationTime: e.creationTime,
         };
+
+        return _
       }) || [];
 
     Promise.all(mappedCampaign)
@@ -83,14 +90,14 @@ const CampaignListComponent: React.FC<CampaignListComponentProps> = ({
         setIsFetchingCampaigns(false);
         setAllCampaigns(campaigns);
 
-        if (currentAccount) {
+        /* if (currentAccount) {
           const userCreated = campaigns.filter((campaign) => {
             return (
               campaign.owner.toLowerCase() === currentAccount.toLowerCase()
             );
           });
           setUserCampaigns(userCreated);
-        }
+        } */
       })
       .catch((error) => {
         console.error("Error fetching campaigns:", error);
@@ -103,7 +110,15 @@ const CampaignListComponent: React.FC<CampaignListComponentProps> = ({
   }, [currentAccount, data]);
 
   const campaignsToDisplay =
-    campaignListType === "all" ? allCampaigns : userCampaigns;
+    campaignListType === "all"
+      ? allCampaigns.filter(
+          (campaign) =>
+            !campaign.paused
+        )
+      : allCampaigns.filter(
+          (campaign) =>
+            campaign.owner.toLowerCase() === currentAccount.toLowerCase()
+        );
   const title = campaignListType === "all" ? "All Campaigns" : "My Campaigns";
 
   return (
@@ -132,14 +147,18 @@ const CampaignListComponent: React.FC<CampaignListComponentProps> = ({
               >
                 {campaign.description}
               </p>
-              <p className="text-gray-200">Goal: {toEther(campaign.goal)} ETH</p>
+              <p className="text-gray-200">
+                Goal: {Number(campaign.goal)} $
+              </p>
               <p className="text-gray-400">
                 Owner: {campaign.owner.substring(0, 6)}...
                 {campaign.owner.substring(campaign.owner.length - 4)}
               </p>
               <p className="text-gray-400">
                 Deadline:{" "}
-                {new Date(Number(campaign.duration * BigInt(1000))).toLocaleDateString("en-US", {
+                {new Date(
+                  Number(campaign.duration * BigInt(1000))
+                ).toLocaleDateString("en-US", {
                   month: "long",
                   day: "numeric",
                   year: "numeric",

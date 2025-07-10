@@ -1,7 +1,4 @@
 import React, { useState } from "react";
-import { contract } from "../App";
-import { useReadContract, useSendTransaction } from "thirdweb/react";
-import { prepareContractCall, sendTransaction, toEther, toWei } from "thirdweb";
 
 interface CreateCampaignModalProps {
   isOpen: boolean;
@@ -28,7 +25,7 @@ const CreateCampaignModal: React.FC<CreateCampaignModalProps> = ({
   const [newCampaign, setNewCampaign] = useState({
     name: "",
     description: "",
-    goal: "", // in ETH
+    goal: "",
     duration: "",
   });
 
@@ -117,7 +114,7 @@ const CreateCampaignModal: React.FC<CreateCampaignModalProps> = ({
               htmlFor="modal-goal"
               className="block text-gray-300 text-sm font-bold mb-2"
             >
-              Funding Goal (ETH):
+              Funding Goal ($):
             </label>
             <input
               type="number"
